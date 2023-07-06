@@ -506,7 +506,7 @@ def main():
     )
 
     parse.add_argument("--parse", action="store_true", help=argparse.SUPPRESS)
-    parse.add_argument("--debug", action="store_true", help=argparse.SUPPRESS)
+    parse.add_argument("--debug", action="store_true", help="debug")
 
     parse.add_argument("--addr", default="::", help="需要连接的IP或域名")
     parse.add_argument("--port", default=6789, type=int, help="端口(default: 6789")
