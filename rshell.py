@@ -465,7 +465,8 @@ def main():
     parse = argparse.ArgumentParser(
         usage="%(prog)s [option]",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        description="反向shell连接\n\n"
+        description="反向shell连接\n"
+        "这里是使用反向shell连接到服务端的, Server是控制端，client是被控制端。\n\n"
         "key1.json:\n"
         """
 {
