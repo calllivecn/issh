@@ -511,9 +511,13 @@ def main():
     parse.add_argument("--addr", default="::", help="需要连接的IP或域名")
     parse.add_argument("--port", default=6789, type=int, help="端口(default: 6789")
 
+    parse.add_argument("--server", action="store_true", help="启动服务端。")
+    parse.add_argument("--cmd", default=SHELL, help=f"需要使用的交互程序(default: {SHELL})")
+
     # parse.add_argument("--Spub", action="store", nargs="+", required=True, help="使用加密通信的对方公钥，server端可能有多个。")
     # parse.add_argument("--Spriv", action="store", required=True, help="使用加密通信的私钥。")
 
+    """
     subparsers = parse.add_subparsers(title="指令", metavar="", required=True)
     server_func =  subparsers.add_parser("server", help="启动服务端")
     client_func = subparsers.add_parser("client", help="使用client端")
@@ -523,6 +527,7 @@ def main():
     server_func.set_defaults(func=server_process)
     
     client_func.set_defaults(func=client)
+    """
 
     args = parse.parse_args()
     if args.parse:
@@ -533,16 +538,12 @@ def main():
         logger.setLevel(logging.DEBUG)
     
     
-    if args.func is server_process:
-        args.func(args)
-
-    elif args.func is client:
-        # asyncio.run(args.func(args.addr, args.port), debug=True)
-        asyncio.run(args.func(args), debug=True)
+    if args.server:
+        server_process(args)
 
     else:
-        logger.critical(f"？？？")
-        sys.exit(1)
+        # asyncio.run(args.func(args.addr, args.port), debug=True)
+        asyncio.run(client(args), debug=True)
 
 
 if __name__ == "__main__":
