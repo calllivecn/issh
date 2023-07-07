@@ -500,7 +500,7 @@ async def client(args):
 
 def main():
     parse = argparse.ArgumentParser(
-        usage="%(prog)s <命令> [option]",
+        usage="%(prog)s [option]",
         description="远程shell连接",
         epilog="END",
     )
