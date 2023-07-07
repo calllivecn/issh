@@ -37,6 +37,7 @@ options:
 
 ## rshell.py
 
+- 使用selectors提高并发
 - 反向连接shell
 - 使用了认证加密连接。
 

@@ -463,7 +463,7 @@ description=r"""
 
 def main():
     parse = argparse.ArgumentParser(
-        usage="%(prog)s <命令> [option]",
+        usage="%(prog)s [option]",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description="反向shell连接\n\n"
         "key1.json:\n"
@@ -487,8 +487,10 @@ def main():
     # parse.add_argument("--Spub", action="store", nargs="+", help="使用加密通信的对方公钥，server端可能有多个。")
     # parse.add_argument("--Spriv", action="store", help="使用加密通信的私钥。")
 
-    parse.add_argument("--keyfile", action="store", type=keypair, help="使用加密通信和指定公私钥。")
+    parse.add_argument("--keyfile", action="store", type=keypair, help="使用加密通信并指定公私钥配置文件。")
+    parse.add_argument("--server", action="store_true", help="启动服务端")
 
+    """
     subparsers = parse.add_subparsers(title="指令", metavar="")
     server_func =  subparsers.add_parser("server", help="启动服务端")
     client_func = subparsers.add_parser("client", help="使用client端")
@@ -497,6 +499,7 @@ def main():
     server_func.set_defaults(func=server)
     
     client_func.set_defaults(func=client)
+    """
 
     args = parse.parse_args()
 
@@ -507,13 +510,11 @@ def main():
     if args.debug:
         logger.setLevel(logging.DEBUG)
     
-    try:
-        return args.func(args)
-    except KeyboardInterrupt:
-        pass
-    except AttributeError:
-        print("必须给一个指令： <client|server> ")
-
+    if args.server:
+        server(args)
+    else:
+        client(args)
+    
 
 if __name__ == "__main__":
     main()
