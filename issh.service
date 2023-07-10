@@ -1,0 +1,12 @@
+[Unit]
+Description=issh server
+After=network.target
+
+[Service]
+Type=simple
+Environment="TERM=xterm-256color"
+ExecStart=/usr/bin/python -u %h/work/issh/issh.py --server --port 16789
+ExecStop=/usr/bin/kill $MAINPID
+
+[Install]
+WantedBy=default.target
