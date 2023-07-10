@@ -8,7 +8,7 @@
 ```shell
 # 示例一
 $ issh.py --help
-usage: issh.py <命令> [option]
+usage: issh.py [option]
 
 远程shell连接
 
@@ -17,21 +17,11 @@ options:
   --debug      debug
   --addr ADDR  需要连接的IP或域名
   --port PORT  端口(default: 6789
-
-指令:
-  
-    server     启动服务端
-    client     使用client端
+  --server     启动服务端。
+  --cmd CMD    需要使用的交互程序(default: bash)
 
 END
 
-# 示例二
-$ issh.py server --help
-usage: issh.py <命令> [option] server [-h] [--cmd CMD]
-
-options:
-  -h, --help  show this help message and exit
-  --cmd CMD   需要使用的交互程序(default: bash)
 ```
 
 
@@ -44,9 +34,10 @@ options:
 ```shell
 #示例一
 $ rshell.py --help
-usage: rshell.py <命令> [option]
+usage: rshell.py [option]
 
 反向shell连接
+这里是使用反向shell连接到服务端的, Server是控制端，client是被控制端。
 
 key1.json:
 
@@ -62,28 +53,9 @@ options:
   -h, --help         show this help message and exit
   --addr ADDR        需要连接的IP或域名
   --port PORT        端口
-  --keyfile KEYFILE  使用加密通信和指定公私钥。
-
-指令:
-  
-    server           启动服务端
-    client           使用client端
+  --keyfile KEYFILE  使用加密通信并指定公私钥配置文件。
+  --server           启动服务端
 
 END
-
-# 示例二
-$ rshell.py server --help
-usage: rshell.py <命令> [option] server [-h] [--cmd CMD]
-
-options:
-  -h, --help  show this help message and exit
-  --cmd CMD   需要使用的交互程序(default: bash)
-
-# 示例三
-$ rshell.py client --help
-usage: rshell.py <命令> [option] client [-h]
-
-options:
-  -h, --help  show this help message and exit
 
 ```
