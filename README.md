@@ -66,7 +66,7 @@ END
 - 使用:
 
 ```shell
-$ issh.py --server --cmd ./auth.sh
+$ issh.py --server --cmd ./auth.sh # 也可以直接使用系统的/usr/bin/login 认证系统用户，不过需要root权限。
 用户名：user
 密码: 
 $
