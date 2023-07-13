@@ -59,3 +59,15 @@ options:
 END
 
 ```
+
+
+## auth.sh 一个简单认证工具
+
+- 使用:
+
+```shell
+$ issh.py --server --cmd ./auth.sh
+用户名：user
+密码: 
+$
+```

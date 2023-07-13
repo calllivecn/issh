@@ -47,7 +47,7 @@ BUFSIZE = 1<<12 # 4K
 
 
 def getlogger(level=logging.INFO):
-    fmt = logging.Formatter("%(asctime)s %(filename)s:%(funcName)s:%(lineno)d %(levelname)s %(message)s", datefmt="%Y-%m-%d-%H:%M:%S")
+    fmt = logging.Formatter("%(asctime)s.%(msecs)03d %(levelname)s %(filename)s:%(funcName)s:%(lineno)d %(message)s", datefmt="%Y-%m-%d-%H:%M:%S")
 
     # stream = logging.StreamHandler(sys.stdout)
     # stream.setFormatter(fmt)
