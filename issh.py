@@ -28,6 +28,7 @@ from asyncio import (
     StreamReader,
     StreamWriter,
     StreamReaderProtocol,
+    subprocess as asubprocess,
 )
 
 from typing import (
@@ -232,7 +233,7 @@ class RecvSend:
 
 
 
-async def waitproc(shell: str, pty_slave: int) -> int:
+async def wait_process(shell: str, pty_slave: int) -> int:
     logger.debug(f"sub shell start")
     # p = await subprocess.create_subprocess_exec(shell, stdin=pty_slave, stdout=pty_slave, stderr=pty_slave, preexec_fn=os.setsid)
     p = await asyncio.create_subprocess_exec(shell, stdin=pty_slave, stdout=pty_slave, stderr=pty_slave, preexec_fn=os.setsid)
@@ -243,6 +244,9 @@ async def waitproc(shell: str, pty_slave: int) -> int:
 
 
 async def connect_read_write(pty_master) -> Tuple[StreamReader, StreamWriter]:
+    """
+    把对pipe 的读写，封闭为， StreamReader, StreamWriter
+    """
     fileobj = open(pty_master)
     loop = asyncio.get_running_loop()
 
@@ -256,19 +260,9 @@ async def connect_read_write(pty_master) -> Tuple[StreamReader, StreamWriter]:
     return reader, writer
 
 
-# 好像使用协议后，不能这样直接转发了。。。
-async def relay(reader: StreamReader, writer: StreamWriter):
-    logger.debug(f"relay: {reader} --> {writer}")
-    while (data := await reader.read(BUFSIZE)) != b"":
-        logger.debug(f"relay: {data}")
-        writer.write(data)
-        await writer.drain()
-    logger.debug(f"stream close()")
-
 
 Pty = TypeVar("Pty")
 # server 从 sock -> pty_master
-# async def sock2pty(traner: RecvSend, writer: StreamWriter, pty_master: Pty):
 async def sock2pty(traner: RecvSend, writer: StreamWriter):
 
     pty_master = writer.get_extra_info("pipe")
@@ -310,8 +304,10 @@ async def pty2sock(pty_master: Pty, traner: RecvSend):
     logger.debug("pty2sock done, shell exit.")
 
 
-# async def socketshell(shell: str, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
 async def socketshell(shell: str, client: socket.SocketType):
+    """
+    server端，在客户端建立连接后，为远端shell，单独生成子进程处理。
+    """
 
     r, w = await asyncio.open_connection(sock=client)
     traner = RecvSend(r, w)
@@ -320,10 +316,10 @@ async def socketshell(shell: str, client: socket.SocketType):
     logger.info(f"client {addr} connected.")
 
     pty_master, pty_slave = pty.openpty()
+
     pty_reader, pty_writer = await connect_read_write(pty_master)
 
-
-    p_task = asyncio.create_task(waitproc(shell, pty_slave))
+    p_task = asyncio.create_task(wait_process(shell, pty_slave))
     # pty2sock_task = asyncio.create_task(relay(pty_reader, w))
     # sock2pty = asyncio.create_task(relay(reader, pty_writer))
 
@@ -386,7 +382,6 @@ async def server(args):
         await sock.serve_forever()
 
 
-
 # 2023-04-16 使用多进程开启子进程
 def server_process(args):
     sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
@@ -401,7 +396,9 @@ def server_process(args):
             client, addr = sock.accept()
             # start_shell(args.cmd, client)
             th = threading.Thread(target=start_shell, args=(args.cmd, client))
+            # th = mprocess.Process(target=start_shell, args=(args.cmd, client))
             th.start()
+            # client.close()
 
     # 不能使用CTRL+C这样已经登录的子进程也会被干掉。
     except KeyboardInterrupt:
