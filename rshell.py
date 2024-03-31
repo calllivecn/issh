@@ -2,7 +2,7 @@
 # coding=utf-8
 # date 2022-01-12 15:44:57
 # updated 2022-08-27 17:35:35
-# author calllivecn <c-all@qq.com>
+# author calllivecn <calllivecn@outlook.com>
 
 """
 这里是使用反向shell连接到服务端的, Server是控制端，client是被控制端。

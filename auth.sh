@@ -1,6 +1,6 @@
 #!/bin/bash
 # date 2023-07-13 19:43:47
-# author calllivecn <c-all@qq.com>
+# author calllivecn <calllivecn@outlook.com>
 
 # 忽略一些信号
 trap : SIGINT SIGTERM
