@@ -18,7 +18,8 @@ import termios
 import asyncio
 import logging
 import argparse
-import threading
+# import threading
+from pathlib import Path
 import multiprocessing as mprocess
 
 from logging.handlers import TimedRotatingFileHandler
@@ -28,19 +29,14 @@ from asyncio import (
     StreamReader,
     StreamWriter,
     StreamReaderProtocol,
-    subprocess as asubprocess,
 )
 
 from typing import (
-    Union,
     # Self,
-    Optional,
-    BinaryIO,
-    Tuple,
+    # Optional,
     TypeVar,
 )
 
-Self = TypeVar("Self")
 
 SHELL="bash"
 
@@ -53,9 +49,9 @@ def getlogger(level=logging.INFO):
     # stream = logging.StreamHandler(sys.stdout)
     # stream.setFormatter(fmt)
 
-    # fp = logging.FileHandler("rshell.logs")
-    prog, _ = os.path.splitext(os.path.basename(sys.argv[0]))
-    fp = TimedRotatingFileHandler(f"{prog}.logs", when="D", interval=1, backupCount=7)
+    # fp = logging.FileHandler("rshell.log")
+    prog = Path(sys.argv[0]).stem
+    fp = TimedRotatingFileHandler(f"{prog}.log", when="D", interval=1, backupCount=7)
     fp.setFormatter(fmt)
 
     logger = logging.getLogger(f"{prog}")
@@ -66,43 +62,6 @@ def getlogger(level=logging.INFO):
 
 
 logger = getlogger()
-
-
-
-TermSize = struct.Struct("HH")
-
-def get_pty_size(fd) -> bytes:
-    size = fcntl.ioctl(fd, termios.TIOCGWINSZ, b"0000") # 占位符
-    h, w = TermSize.unpack(size)
-    return h, w
-
-
-def set_pty_size(fd, columns, rows):
-# def set_pty_size(fd, columns, rows):
-    # size = struct.pack("HH", columns, rows)
-    # 这个返回还不知道是什么
-    return fcntl.ioctl(fd, termios.TIOCSWINSZ, TermSize.pack(columns, rows))
-
-
-# 窗口大小调整, 这样是调控制端的。 (这是同步方法)
-def signal_SIGWINCH_handle(sock: socket.SocketType, fd):
-    """
-    usage: lambda sigNum, frame: signal_SIGWINCH_handle(sock, sigNum, frame)
-    """
-    columns, rows = get_pty_size(fd)
-    # logging 在异步的信号量模式下不安全。在 signal handle 里不要用 logging
-    # logger.debug(f"窗口大小改变: {size}")
-    # logger.debug("sigwinch 向对端发送新窗口大小")
-    # set_pty_size(STDOUT, *size)
-
-    h = Packet()
-    payload = h.tobuf(PacketType.TTY_RESIZE, TermSize.pack(columns, rows))
-    sock.send(payload)
-
-# 窗口大小调整, 这样是调控制端的。 (试试协程, 不行。 TypeError: coroutines cannot be used with add_signal_handler())
-async def signal_SIGWINCH_asyncio(sock: "RecvSend", fd):
-    columns, rows = get_pty_size(fd)
-    await sock.write(PacketType.TTY_RESIZE, TermSize.pack(columns, rows))
 
 
 class PacketError(Exception):
@@ -136,7 +95,7 @@ class Packet:
         self.Version = 0x01 # protocol version
 
 
-    def tobuf(self, typ: PacketType, data: bytes) -> Union[bytes, memoryview]:
+    def tobuf(self, typ: PacketType, data: bytes) -> bytes|memoryview:
         self.buf = io.BytesIO()
         h = self.header.pack(self.Version, typ, len(data))
         self.buf.write(h)
@@ -160,8 +119,8 @@ class RecvSend:
 
         self.max_payload = 65536
     
-    async def read(self) -> Tuple[PacketType, Union[bytes, memoryview]]:
-        logger.debug(f"__read() Packet.hsize")
+    async def read(self) -> tuple[PacketType, bytes|memoryview]:
+        logger.debug("__read() Packet.hsize")
 
         data = await self.__read(Packet.hsize)
         if data == b"":
@@ -191,22 +150,20 @@ class RecvSend:
         ph = Packet()
         payload = ph.tobuf(typ, data)
 
-        await self.__write(payload)
+        return await self.__write(payload)
 
     
     def getsockname(self):
         # return self.sock.getsockname()
         return self.writer.get_extra_info("peername")
 
-    def fileno(self):
-        return self.sock.fileno()
 
     async def close(self):
         self.writer.close()
         await self.writer.wait_closed()
     
 
-    async def __read(self, size: int) -> Union[bytes, memoryview]:
+    async def __read(self, size: int) -> bytes|memoryview:
         buf = io.BytesIO()
         while (d := await self.reader.read(size)) != b"":
             buf.write(d)
@@ -216,7 +173,7 @@ class RecvSend:
         return buf.getvalue()
     
 
-    async def __write(self, data: Union[bytes, memoryview]):
+    async def __write(self, data: bytes|memoryview):
 
         self.writer.write(data)
         await self.writer.drain()
@@ -232,18 +189,52 @@ class RecvSend:
         """
 
 
+TermSize = struct.Struct("HH")
+
+def get_pty_size(fd) -> tuple[int, int]:
+    size = fcntl.ioctl(fd, termios.TIOCGWINSZ, b"00000000") # 占位符
+    #h, w, xpixels, ypixels = TermSize.unpack(size)
+    return struct.unpack("HHHH", size)[:2]
+
+def set_pty_size(fd, columns, rows):
+    # 这个返回还不知道是什么
+    return fcntl.ioctl(fd, termios.TIOCSWINSZ, TermSize.pack(columns, rows))
+
+# py3.11 新增
+def get_pty_size2(fd) -> tuple[int, int]:
+    return termios.tcgetwinsize(fd)
+
+def set_pty_size2(fd, winsize):
+    return termios.tcsetwinsize(fd, winsize)
+
+
+async def resize_pty(sock: RecvSend, fd):
+    columns, rows = get_pty_size(fd)
+    logger.debug(f"窗口大小改变: {columns}x{rows}")
+    logger.debug("sigwinch 向对端发送新窗口大小")
+    await sock.write(PacketType.TTY_RESIZE, TermSize.pack(columns, rows))
+
+
+# 窗口大小调整, 这样是调控制端的。 (这是同步方法)
+def signal_SIGWINCH_handle(sock: RecvSend, fd: int):
+    """
+    usage: lambda sigNum, frame: signal_SIGWINCH_handle(sock, sigNum, frame)
+    """
+    loop = asyncio.get_running_loop()
+    loop.create_task(resize_pty(sock, fd), name="resize_pty")
+
 
 async def wait_process(shell: str, pty_slave: int) -> int:
-    logger.debug(f"sub shell start")
-    # p = await subprocess.create_subprocess_exec(shell, stdin=pty_slave, stdout=pty_slave, stderr=pty_slave, preexec_fn=os.setsid)
+    logger.debug("sub shell start")
     p = await asyncio.create_subprocess_exec(shell, stdin=pty_slave, stdout=pty_slave, stderr=pty_slave, preexec_fn=os.setsid)
+    logger.debug(f"shell pid: {p.pid}")
     recode = await p.wait()
     logger.debug(f"shell wait() done, recode: {recode}")
     os.close(pty_slave)
     return recode
 
 
-async def connect_read_write(pty_master) -> Tuple[StreamReader, StreamWriter]:
+async def connect_read_write(pty_master) -> tuple[StreamReader, StreamWriter]:
     """
     把对pipe 的读写，封闭为， StreamReader, StreamWriter
     """
@@ -269,7 +260,7 @@ async def sock2pty(traner: RecvSend, writer: StreamWriter):
 
     while True:
 
-        logger.debug(f"tnraner.read() start")
+        logger.debug("tnraner.read() start")
         typ, payload = await traner.read()
         logger.debug(f"typ:{PacketType(typ).name} payload: {payload}")
 
@@ -282,18 +273,16 @@ async def sock2pty(traner: RecvSend, writer: StreamWriter):
             set_pty_size(pty_master, *TermSize.unpack(payload))
 
         elif typ == PacketType.EXIT:
-            # writer.close()
-            # await writer.wait_closed()
             # 应该放在 pty_master 退出后。由
-            logger.debug(f"peer exit")
+            logger.debug("peer exit")
             break
 
         else:
-            logger.warning(f"未知协议类型.")
+            logger.warning("未知协议类型.")
             break
 
 
-async def pty2sock(pty_master: Pty, traner: RecvSend):
+async def pty2sock(pty_master: StreamReader, traner: RecvSend):
     try:
         while (data := await pty_master.read(BUFSIZE)) != b"":
             await traner.write(PacketType.TRANER, data)
@@ -320,11 +309,8 @@ async def socketshell(shell: str, client: socket.SocketType):
     pty_reader, pty_writer = await connect_read_write(pty_master)
 
     p_task = asyncio.create_task(wait_process(shell, pty_slave))
-    # pty2sock_task = asyncio.create_task(relay(pty_reader, w))
-    # sock2pty = asyncio.create_task(relay(reader, pty_writer))
 
     sock2pty_task = asyncio.create_task(sock2pty(traner, pty_writer))
-    # sock2pty_task = asyncio.create_task(sock2pty(traner, pty_writer, pty_master))
     pty2sock_task = asyncio.create_task(pty2sock(pty_reader, traner))
 
 
@@ -345,16 +331,6 @@ async def socketshell(shell: str, client: socket.SocketType):
     # pty_writer.close()
     # await pty_writer.wait_closed()
 
-    """
-    logger.debug("pty2sock start")
-    pty2sock_task.cancel()
-    logger.debug("pty2sock end")
-
-    logger.debug("sock2pty start")
-    sock2pty_task.cancel()
-    logger.debug("sockpty end")
-    """
-
     results = await asyncio.gather(pty2sock_task, sock2pty_task, p_task, return_exceptions=True)
     logger.debug(f"gather() --> {results}")
 
@@ -362,24 +338,28 @@ async def socketshell(shell: str, client: socket.SocketType):
     logger.info(f"client {addr} disconnect, recode: {recode}")
 
 
+"""
+# 信号处理器函数
+def sigchld_handler(signum: int, frame: Optional[object]):
+    while True:
+        try:
+            # 使用非阻塞模式回收所有退出的子进程
+            pid, status = os.waitpid(-1, os.WNOHANG)
+            if pid == 0:  # 没有子进程退出
+                break
+            logger.debug(f"信号处理器：回收了子进程 {pid}，退出状态为 {status}")
+        except ChildProcessError:
+            # 没有子进程可回收，捕获错误并退出循环
+            break
+
+# 注册 SIGCHLD 信号处理器
+signal.signal(signal.SIGCHLD, sigchld_handler)
+"""
+
+
 # 为登录的shell开一个子进程，这样不行。不能直接启动协程
 def start_shell(shell, client):
-    p = mprocess.Process(target=lambda: asyncio.run(socketshell(shell, client)))
-    p.start()
-
-    # 传给子进程后，在父进程需要关闭。
-    client.close()
-    
-    p.join()
-    logger.debug(f"子进程 {p.pid} shell退出.")
-
-
-# 旧的方案代码先保留
-async def server(args):
-    sock = await asyncio.start_server(lambda r, w: socketshell(args.cmd, r, w), args.addr, args.port, reuse_address=True)
-    logger.info(f"listent: {args.addr}, {args.port}")
-    async with sock:
-        await sock.serve_forever()
+    asyncio.run(socketshell(shell, client))
 
 
 # 2023-04-16 使用多进程开启子进程
@@ -394,11 +374,15 @@ def server_process(args):
     try:
         while True:
             client, addr = sock.accept()
+            logger.debug(f"新连接: {addr}")
+
             # start_shell(args.cmd, client)
-            th = threading.Thread(target=start_shell, args=(args.cmd, client))
-            # th = mprocess.Process(target=start_shell, args=(args.cmd, client))
+
+            # th = threading.Thread(target=start_shell, args=(args.cmd, client))
+
+            th = mprocess.Process(target=start_shell, args=(args.cmd, client))
             th.start()
-            # client.close()
+            client.close()
 
     # 不能使用CTRL+C这样已经登录的子进程也会被干掉。
     except KeyboardInterrupt:
@@ -419,12 +403,12 @@ async def stdin2sock(r: StreamReader, w: RecvSend):
 
 async def sock2stdout(r: RecvSend, w: StreamWriter):
     while True:
-        logger.debug(f"read()")
+        logger.debug("read()")
         typ, payload = await r.read()
         logger.debug(f"{PacketType(typ).name}, {payload}")
 
         if typ == PacketType.TRANER:
-            logger.debug(f"w.write(payload) --> stdout")
+            logger.debug("w.write(payload) --> stdout")
             w.write(payload)
             await w.drain()
 
@@ -434,12 +418,13 @@ async def sock2stdout(r: RecvSend, w: StreamWriter):
 
         elif typ == PacketType.EXIT:
             await r.close()
-            logger.debug(f"peer sock close")
+            logger.debug("peer sock close")
             break
         else:
             logger.debug(f"不符合的包：{typ}, {payload}")
 
-    logger.debug(f"done")
+    logger.debug("done")
+
 
 async def client(args):
 
@@ -454,13 +439,11 @@ async def client(args):
     loop = asyncio.get_running_loop()
 
 
-
-    # 窗口大小调整, 这样是调控制端的。 (这是同步方法)
-    sock = w.get_extra_info("socket")
-    loop.add_signal_handler(signal.SIGWINCH, signal_SIGWINCH_handle, sock, STDIN)
-
-    # 窗口大小调整, 这样是调控制端的。 尝试使用asyncio: TypeError: coroutines cannot be used with add_signal_handler()
-    # loop.add_signal_handler(signal.SIGWINCH, signal_SIGWINCH_asyncio(traner, STDIN))
+    # 窗口大小调整, 这样是调控制端的。 (必须是普通函数。同步方法)
+    # sock = w.get_extra_info("socket")
+    # logger.debug(f"{sock=}\n{dir(sock)=}")
+    # loop.add_signal_handler(signal.SIGWINCH, signal_SIGWINCH_handle, sock, STDIN)
+    loop.add_signal_handler(signal.SIGWINCH, signal_SIGWINCH_handle, traner, STDIN)
 
     # 初始化对面终端
     columns, rows = get_pty_size(STDIN)
@@ -511,6 +494,8 @@ def main():
     parse.add_argument("--server", action="store_true", help="启动服务端。")
     parse.add_argument("--cmd", default=SHELL, help=f"需要使用的交互程序(default: {SHELL})")
 
+    # parse.add_argument("--log", action="store", help="日志文件")
+
     # parse.add_argument("--Spub", action="store", nargs="+", required=True, help="使用加密通信的对方公钥，server端可能有多个。")
     # parse.add_argument("--Spriv", action="store", required=True, help="使用加密通信的私钥。")
 
@@ -530,6 +515,10 @@ def main():
     if args.parse:
         print(args)
         sys.exit(0)
+    
+    # if args.log:
+        # fp = logging.FileHandler(args.log)
+        # logger.addHandler(fp)
     
     if args.debug:
         logger.setLevel(logging.DEBUG)
