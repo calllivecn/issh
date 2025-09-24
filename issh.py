@@ -18,7 +18,7 @@ import termios
 import asyncio
 import logging
 import argparse
-# import threading
+import threading
 from pathlib import Path
 import multiprocessing as mprocess
 
@@ -229,7 +229,7 @@ async def wait_process(shell: str, pty_slave: int) -> int:
     p = await asyncio.create_subprocess_exec(shell, stdin=pty_slave, stdout=pty_slave, stderr=pty_slave, preexec_fn=os.setsid)
     logger.debug(f"shell pid: {p.pid}")
     recode = await p.wait()
-    logger.debug(f"shell wait() done, recode: {recode}")
+    logger.debug(f"shell exit pid: {p.pid}, recode: {recode}")
     os.close(pty_slave)
     return recode
 
@@ -331,16 +331,15 @@ async def socketshell(shell: str, client: socket.SocketType):
     # pty_writer.close()
     # await pty_writer.wait_closed()
 
-    results = await asyncio.gather(pty2sock_task, sock2pty_task, p_task, return_exceptions=True)
-    logger.debug(f"gather() --> {results}")
+    # results = await asyncio.gather(pty2sock_task, sock2pty_task, p_task, return_exceptions=True)
+    # logger.debug(f"gather() --> {results}")
 
     recode = p_task.result()
     logger.info(f"client {addr} disconnect, recode: {recode}")
 
-
 """
 # 信号处理器函数
-def sigchld_handler(signum: int, frame: Optional[object]):
+def sigchld_handler(signum: int, frame: None|object):
     while True:
         try:
             # 使用非阻塞模式回收所有退出的子进程
@@ -353,7 +352,7 @@ def sigchld_handler(signum: int, frame: Optional[object]):
             break
 
 # 注册 SIGCHLD 信号处理器
-signal.signal(signal.SIGCHLD, sigchld_handler)
+signal.signal(signal.SIGCHLD, signal.SIG_IGN)
 """
 
 
@@ -362,7 +361,15 @@ def start_shell(shell, client):
     asyncio.run(socketshell(shell, client))
 
 
-# 2023-04-16 使用多进程开启子进程
+def start_shell_process(shell, client):
+    p = mprocess.Process(target=start_shell, args=(shell, client))
+    p.start()
+    client.close()
+    logger.debug(f"启动子进程 {p.pid} 处理登录")
+    p.join()
+    logger.debug(f"回收子进程 {p.pid}")
+
+
 def server_process(args):
     sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -375,16 +382,10 @@ def server_process(args):
         while True:
             client, addr = sock.accept()
             logger.debug(f"新连接: {addr}")
-
-            # start_shell(args.cmd, client)
-
-            # th = threading.Thread(target=start_shell, args=(args.cmd, client))
-
-            th = mprocess.Process(target=start_shell, args=(args.cmd, client))
+            th = threading.Thread(target=start_shell_process, args=(args.cmd, client), name=f"shell-{addr}")
             th.start()
-            client.close()
 
-    # 不能使用CTRL+C这样已经登录的子进程也会被干掉。
+    # 不能使用CTRL+C这样已经创建的子进程也会被干掉。只是kill server端就没问题
     except KeyboardInterrupt:
         pass
 
