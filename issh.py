@@ -31,12 +31,6 @@ from asyncio import (
     StreamReaderProtocol,
 )
 
-from typing import (
-    # Self,
-    # Optional,
-    TypeVar,
-)
-
 
 SHELL="bash"
 
@@ -251,8 +245,6 @@ async def connect_read_write(pty_master) -> tuple[StreamReader, StreamWriter]:
     return reader, writer
 
 
-
-Pty = TypeVar("Pty")
 # server 从 sock -> pty_master
 async def sock2pty(traner: RecvSend, writer: StreamWriter):
 
@@ -432,7 +424,6 @@ async def client(args):
     # 这两个只在client 使用
     STDIN = sys.stdin.fileno()
     # STDOUT = sys.stdout.fileno()
-
 
     r, w = await asyncio.open_connection(args.addr, args.port)
     traner = RecvSend(r, w)
