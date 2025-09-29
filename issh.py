@@ -190,8 +190,7 @@ def get_pty_size(fd) -> tuple[int, int]:
     #h, w, xpixels, ypixels = TermSize.unpack(size)
     return struct.unpack("HHHH", size)[:2]
 
-def set_pty_size(fd, columns, rows):
-    # 这个返回还不知道是什么
+def set_pty_size(fd, columns, rows) -> bytes:
     return fcntl.ioctl(fd, termios.TIOCSWINSZ, TermSize.pack(columns, rows))
 
 # py3.11 新增
@@ -228,16 +227,16 @@ async def wait_process(shell: str, pty_slave: int) -> int:
     return recode
 
 
-async def connect_read_write(pty_master) -> tuple[StreamReader, StreamWriter]:
+async def connect_read_write(pty_master: int) -> tuple[StreamReader, StreamWriter]:
     """
     把对pipe 的读写，封闭为， StreamReader, StreamWriter
     """
-    fileobj = open(pty_master)
+    fileobj = open(pty_master, "rb")
     loop = asyncio.get_running_loop()
 
     reader = StreamReader()
     protocol = StreamReaderProtocol(reader)
-    await loop.connect_read_pipe(lambda: protocol, fileobj)
+    await loop.connect_read_pipe(lambda :protocol, fileobj)
 
     w_transport, w_protocol = await loop.connect_write_pipe(streams.FlowControlMixin, fileobj)
     writer = StreamWriter(w_transport, w_protocol, reader, loop)
@@ -252,7 +251,7 @@ async def sock2pty(traner: RecvSend, writer: StreamWriter):
 
     while True:
 
-        logger.debug("tnraner.read() start")
+        logger.debug("traner.read() start")
         typ, payload = await traner.read()
         logger.debug(f"typ:{PacketType(typ).name} payload: {payload}")
 
